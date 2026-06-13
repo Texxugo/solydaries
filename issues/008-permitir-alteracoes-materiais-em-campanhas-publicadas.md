@@ -6,11 +6,11 @@ Permitir que alterações materiais em **Campanhas Publicadas** passem por **Rev
 
 ## Acceptance criteria
 
-- [ ] Alterações materiais em Campanha publicada são detectadas ou submetidas como alteração pendente.
-- [ ] A versão pública atual permanece estável até aprovação da alteração.
-- [ ] Moderadores conseguem aprovar ou rejeitar alterações materiais.
-- [ ] Rejeições exigem motivo.
-- [ ] Decisões geram notificação interna e registro de auditoria.
+- [x] Alterações materiais em Campanha publicada são detectadas ou submetidas como alteração pendente.
+- [x] A versão pública atual permanece estável até aprovação da alteração.
+- [x] Moderadores conseguem aprovar ou rejeitar alterações materiais.
+- [x] Rejeições exigem motivo.
+- [x] Decisões geram notificação interna e registro de auditoria.
 
 ## Blocked by
 

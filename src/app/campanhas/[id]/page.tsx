@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSessionPerson } from "@/lib/session";
 import { formatPersonName } from "@/lib/format";
@@ -24,13 +24,14 @@ export const metadata: Metadata = {
   title: "Campanha — Solydaries",
 };
 
+const PUBLICLY_VISIBLE = ["PUBLISHED", "CLOSED"] as const;
+
 export default async function CampanhaPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const person = await getSessionPerson();
-  if (!person) redirect("/entrar");
 
   // Encerramento preguiçoso por prazo antes de carregar a campanha.
   await closeExpiredCampaigns();
@@ -42,17 +43,18 @@ export default async function CampanhaPage({
       ownerPerson: { select: { name: true } },
       ownerOrganization: { select: { id: true, name: true } },
       createdBy: { select: { name: true } },
+      changeRequests: { where: { status: "PENDING" }, take: 1 },
     },
   });
   if (!campaign) notFound();
 
-  // Antes da publicação, só quem está envolvido enxerga a campanha: dono,
-  // criador, representante da organização dona — ou a moderação, que
-  // precisa enxergar campanhas nas filas (ex.: sem movimentação).
-  const isOwnerPerson = campaign.ownerPersonId === person.id;
-  const isCreator = campaign.createdById === person.id;
+  const pendingChange = campaign.changeRequests[0] ?? null;
+
+  // Relação do visitante com a campanha (tudo falso para quem não está logado).
+  const isOwnerPerson = person ? campaign.ownerPersonId === person.id : false;
+  const isCreator = person ? campaign.createdById === person.id : false;
   let isOrgRepresentative = false;
-  if (campaign.ownerOrganizationId) {
+  if (person && campaign.ownerOrganizationId) {
     const membership = await prisma.organizationMember.findUnique({
       where: {
         organizationId_personId: {
@@ -63,18 +65,42 @@ export default async function CampanhaPage({
     });
     isOrgRepresentative = membership?.role === "REPRESENTATIVE";
   }
+  const isModerator = person ? canModerate(person) : false;
+  const canManage = person ? await canManageCampaign(person, campaign) : false;
+
+  // Modo gestão: dono, criador, representante ou moderação. Os demais
+  // (inclusive visitantes) só veem campanhas publicadas/encerradas, em modo
+  // público — sem dados privados nem ações.
+  const canViewManagement =
+    isOwnerPerson || isCreator || isOrgRepresentative || isModerator;
+  const isPublicView = !canViewManagement;
   if (
-    !isOwnerPerson &&
-    !isCreator &&
-    !isOrgRepresentative &&
-    !canModerate(person)
+    isPublicView &&
+    !PUBLICLY_VISIBLE.includes(
+      campaign.status as (typeof PUBLICLY_VISIBLE)[number]
+    )
   ) {
     notFound();
   }
 
-  const canManage = await canManageCampaign(person, campaign);
-  const isModerator = canModerate(person);
   const status = campaignStatusInfo[campaign.status];
+  const isDiscoverable = PUBLICLY_VISIBLE.includes(
+    campaign.status as (typeof PUBLICLY_VISIBLE)[number]
+  );
+
+  const editable =
+    campaign.status === "DRAFT" ||
+    campaign.status === "REJECTED" ||
+    campaign.status === "PUBLISHED";
+  const showEditLink = canManage && editable && !pendingChange;
+  const showClose = canManage && campaign.status === "PUBLISHED";
+  const showSuspend = isModerator && campaign.status === "PUBLISHED";
+  const showSubmit =
+    canManage &&
+    (campaign.status === "DRAFT" || campaign.status === "REJECTED");
+  const showDecision = isModerator && campaign.status === "PENDING_REVIEW";
+  const showQuickRow = showEditLink || showClose || showSuspend;
+  const showActions = showQuickRow || showSubmit || showDecision;
 
   const fields = [
     {
@@ -99,10 +125,6 @@ export default async function CampanhaPage({
         : "Sem prazo definido",
     },
     { label: "Instruções de apoio", value: campaign.supportInstructions },
-    {
-      label: "Criada por",
-      value: `${formatPersonName(campaign.createdBy.name)} em ${campaign.createdAt.toLocaleDateString("pt-BR")}`,
-    },
   ];
 
   return (
@@ -126,21 +148,24 @@ export default async function CampanhaPage({
         </p>
       </div>
 
-      {campaign.status === "DRAFT" && !canManage && (
+      {canViewManagement && campaign.status === "DRAFT" && !canManage && (
         <div className="mb-8 rounded-2xl bg-stone-50 p-5 text-sm text-stone-600 ring-1 ring-stone-100">
           Este é um rascunho: a campanha ainda não foi enviada para revisão e
           não aparece publicamente.
         </div>
       )}
 
-      {campaign.status === "PENDING_REVIEW" && !isModerator && (
-        <div className="mb-8 rounded-2xl bg-amber-50 p-5 text-sm text-amber-800 ring-1 ring-amber-200">
-          A campanha está na fila de revisão da moderação. Os responsáveis
-          serão notificados com a decisão.
-        </div>
-      )}
+      {canViewManagement &&
+        campaign.status === "PENDING_REVIEW" &&
+        !isModerator && (
+          <div className="mb-8 rounded-2xl bg-amber-50 p-5 text-sm text-amber-800 ring-1 ring-amber-200">
+            A campanha está na fila de revisão da moderação. Os responsáveis
+            serão notificados com a decisão.
+          </div>
+        )}
 
-      {(campaign.status === "REJECTED" || campaign.status === "SUSPENDED") &&
+      {canViewManagement &&
+        (campaign.status === "REJECTED" || campaign.status === "SUSPENDED") &&
         campaign.statusReason && (
           <div className="mb-8 rounded-2xl bg-rose-50 p-5 text-sm text-rose-700 ring-1 ring-rose-200">
             <p className="font-semibold">
@@ -152,25 +177,37 @@ export default async function CampanhaPage({
           </div>
         )}
 
-      <div className="mb-8 flex flex-col gap-4">
-        {canManage &&
-          (campaign.status === "DRAFT" ||
-            campaign.status === "REJECTED") && (
-            <EnviarParaRevisao
-              campaignId={campaign.id}
-              isResubmission={campaign.status === "REJECTED"}
-            />
+      {pendingChange && (canManage || isModerator) && (
+        <div className="mb-8 rounded-2xl bg-amber-50 p-5 text-sm text-amber-800 ring-1 ring-amber-200">
+          <p className="font-semibold">Alteração aguardando revisão</p>
+          <p className="mt-1">
+            Há uma alteração material proposta para esta campanha. A versão
+            pública abaixo permanece como está até a moderação decidir.
+          </p>
+          {isModerator && (
+            <Link
+              href={`/moderacao/alteracoes/${pendingChange.id}`}
+              className="mt-2 inline-block font-semibold text-brand-700 underline"
+            >
+              Revisar alteração
+            </Link>
           )}
-        {isModerator && campaign.status === "PENDING_REVIEW" && (
-          <DecisaoRevisao campaignId={campaign.id} />
-        )}
-        {campaign.status === "PUBLISHED" && (canManage || isModerator) && (
-          <div className="flex flex-wrap gap-3">
-            {canManage && <EncerrarCampanha campaignId={campaign.id} />}
-            {isModerator && <SuspenderCampanha campaignId={campaign.id} />}
+        </div>
+      )}
+
+      {isDiscoverable && (
+        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl bg-brand-50 p-5 ring-1 ring-brand-100">
+          <div>
+            <p className="text-sm font-semibold text-brand-800">
+              Apoios confirmados
+            </p>
+            <p className="text-xs text-brand-700">
+              Progresso agregado e público da campanha.
+            </p>
           </div>
-        )}
-      </div>
+          <p className="font-display text-2xl font-bold text-brand-700">0</p>
+        </div>
+      )}
 
       <div className="mb-8 rounded-2xl bg-stone-50 p-5 text-stone-700 ring-1 ring-stone-100">
         <p className="mb-1 text-sm font-semibold text-stone-900">Descrição</p>
@@ -205,7 +242,7 @@ export default async function CampanhaPage({
         </div>
       )}
 
-      {campaign.logisticsDetails && (
+      {canViewManagement && campaign.logisticsDetails && (
         <div className="rounded-2xl bg-amber-50 p-5 ring-1 ring-amber-200">
           <p className="mb-1 text-sm font-semibold text-amber-800">
             Ponto logístico (privado)
@@ -217,6 +254,37 @@ export default async function CampanhaPage({
             Visível apenas para envolvidos na campanha e moderação — nunca na
             página pública.
           </p>
+        </div>
+      )}
+
+      {showActions && (
+        <div className="mt-10 border-t border-stone-100 pt-8">
+          <h2 className="mb-4 font-display text-lg font-bold text-stone-900">
+            Ações da campanha
+          </h2>
+          <div className="flex flex-col gap-4">
+            {showQuickRow && (
+              <div className="flex flex-wrap gap-3">
+                {showEditLink && (
+                  <Link
+                    href={`/campanhas/${campaign.id}/editar`}
+                    className="rounded-xl border-2 border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:border-brand-400 hover:text-brand-700"
+                  >
+                    Editar campanha
+                  </Link>
+                )}
+                {showClose && <EncerrarCampanha campaignId={campaign.id} />}
+                {showSuspend && <SuspenderCampanha campaignId={campaign.id} />}
+              </div>
+            )}
+            {showSubmit && (
+              <EnviarParaRevisao
+                campaignId={campaign.id}
+                isResubmission={campaign.status === "REJECTED"}
+              />
+            )}
+            {showDecision && <DecisaoRevisao campaignId={campaign.id} />}
+          </div>
         </div>
       )}
     </section>

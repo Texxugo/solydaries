@@ -6,11 +6,11 @@ Permitir que Visitantes e Doadores descubram **Campanhas Publicadas** por lista,
 
 ## Acceptance criteria
 
-- [ ] Visitantes conseguem ver lista de Campanhas publicadas.
-- [ ] Visitantes conseguem filtrar por localidade, categoria, tipo de apoio, status e responsável.
-- [ ] Visitantes conseguem visualizar Campanhas publicadas em mapa.
-- [ ] Campanhas rejeitadas, rascunhos e suspensas não aparecem na descoberta pública.
-- [ ] A página pública da Campanha mostra pin aproximado e progresso agregado.
+- [x] Visitantes conseguem ver lista de Campanhas publicadas.
+- [x] Visitantes conseguem filtrar por localidade, categoria, tipo de apoio, status e responsável.
+- [x] Visitantes conseguem visualizar Campanhas publicadas em mapa.
+- [x] Campanhas rejeitadas, rascunhos e suspensas não aparecem na descoberta pública.
+- [x] A página pública da Campanha mostra pin aproximado e progresso agregado.
 
 ## Blocked by
 

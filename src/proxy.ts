@@ -23,6 +23,10 @@ export const config = {
     "/moderacao/:path*",
     "/validacao/:path*",
     "/organizacoes/:path*",
-    "/campanhas/:path*",
+    // A descoberta pública /campanhas e a página da campanha são abertas a
+    // visitantes; só criação e edição exigem login.
+    "/minhas-campanhas/:path*",
+    "/campanhas/nova",
+    "/campanhas/:id/editar",
   ],
 };

@@ -23,7 +23,8 @@ const queues = [
   {
     title: "Alterações materiais",
     text: "Mudanças relevantes em campanhas já publicadas.",
-    status: "Disponível na issue 008",
+    status: "Abrir fila de alterações",
+    href: "/moderacao/alteracoes",
   },
   {
     title: "Denúncias",

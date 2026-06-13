@@ -38,6 +38,8 @@ model Person {
   decidedOrgValidations OrganizationValidationRequest[] @relation("OrgValidationDecider")
   ownedCampaigns          Campaign[]                      @relation("CampaignOwnerPerson")
   createdCampaigns        Campaign[]                      @relation("CampaignCreator")
+  submittedCampaignChanges CampaignChangeRequest[]        @relation("CampaignChangeSubmitter")
+  decidedCampaignChanges  CampaignChangeRequest[]         @relation("CampaignChangeDecider")
 
   @@map("people")
 }
@@ -132,8 +134,47 @@ model Campaign {
   ownerPerson       Person?       @relation("CampaignOwnerPerson", fields: [ownerPersonId], references: [id])
   ownerOrganization Organization? @relation(fields: [ownerOrganizationId], references: [id])
   createdBy         Person        @relation("CampaignCreator", fields: [createdById], references: [id])
+  changeRequests    CampaignChangeRequest[]
 
   @@map("campaigns")
+}
+
+enum CampaignChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Alteração material proposta para uma campanha publicada. Guarda um
+// snapshot dos campos editáveis; a campanha pública só muda quando a
+// alteração é aprovada pela moderação.
+model CampaignChangeRequest {
+  id                  String               @id @default(cuid())
+  campaignId          String
+  submittedById       String
+  status              CampaignChangeStatus @default(PENDING)
+  title               String
+  description         String
+  category            CampaignCategory
+  supportTypes        SupportType[]
+  goalDescription     String
+  supportInstructions String
+  locality            String
+  latitude            Float
+  longitude           Float
+  logisticsDetails    String?
+  deadline            DateTime?
+  decisionReason      String?
+  decidedById         String?
+  decidedAt           DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  submittedBy Person   @relation("CampaignChangeSubmitter", fields: [submittedById], references: [id])
+  decidedBy   Person?  @relation("CampaignChangeDecider", fields: [decidedById], references: [id])
+
+  @@map("campaign_change_requests")
 }
 
 model OrganizationMember {

@@ -8,17 +8,26 @@ import {
   BRAZIL_ZOOM,
   OSM_ATTRIBUTION,
   OSM_TILE_URL,
+  PIN_ZOOM,
   brandPinIcon,
   loadLeaflet,
   roundCoordinate,
 } from "./leaflet-utils";
 
-export function MapPicker() {
+export function MapPicker({
+  initialLat,
+  initialLng,
+}: {
+  initialLat?: number | null;
+  initialLng?: number | null;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
+  const hasInitial =
+    typeof initialLat === "number" && typeof initialLng === "number";
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(
-    null
+    hasInitial ? { lat: initialLat!, lng: initialLng! } : null
   );
 
   useEffect(() => {
@@ -28,11 +37,19 @@ export function MapPicker() {
       const L = await loadLeaflet();
       if (cancelled || !containerRef.current || mapRef.current) return;
 
-      const map = L.map(containerRef.current).setView(
-        BRAZIL_CENTER,
-        BRAZIL_ZOOM
-      );
+      const startCenter = hasInitial
+        ? ([initialLat!, initialLng!] as [number, number])
+        : BRAZIL_CENTER;
+      const startZoom = hasInitial ? PIN_ZOOM : BRAZIL_ZOOM;
+
+      const map = L.map(containerRef.current).setView(startCenter, startZoom);
       L.tileLayer(OSM_TILE_URL, { attribution: OSM_ATTRIBUTION }).addTo(map);
+
+      if (hasInitial) {
+        markerRef.current = L.marker([initialLat!, initialLng!], {
+          icon: brandPinIcon(L),
+        }).addTo(map);
+      }
 
       map.on("click", (event) => {
         const lat = roundCoordinate(event.latlng.lat);
@@ -57,6 +74,8 @@ export function MapPicker() {
       mapRef.current = null;
       markerRef.current = null;
     };
+    // Inicialização única; mudanças de posição vêm dos cliques no mapa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

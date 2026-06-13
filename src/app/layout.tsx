@@ -79,6 +79,12 @@ export default async function RootLayout({
               </span>
             </Link>
             <nav className="flex items-center gap-2 text-sm font-semibold">
+              <Link
+                href="/campanhas"
+                className="rounded-full px-4 py-2 text-stone-600 transition hover:bg-brand-50 hover:text-brand-700"
+              >
+                Campanhas
+              </Link>
               {person ? (
                 <>
                   <Link
@@ -88,10 +94,10 @@ export default async function RootLayout({
                     Painel
                   </Link>
                   <Link
-                    href="/campanhas"
+                    href="/minhas-campanhas"
                     className="rounded-full px-4 py-2 text-stone-600 transition hover:bg-brand-50 hover:text-brand-700"
                   >
-                    Campanhas
+                    Minhas campanhas
                   </Link>
                   <Link
                     href="/organizacoes"
