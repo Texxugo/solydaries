@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Papel global da Pessoa na plataforma. Toda Pessoa é doadora por padrão;
+// Administrador e Moderador serão usados a partir da issue 002.
+enum GlobalRole {
+  DONOR
+  MODERATOR
+  ADMIN
+}
+
+model Person {
+  id              String     @id @default(cuid())
+  name            String
+  email           String     @unique
+  passwordHash    String
+  role            GlobalRole @default(DONOR)
+  termsAcceptedAt DateTime
+  isActive        Boolean    @default(true)
+  // Validação de Pessoa aprovada autoriza campanhas em nome próprio.
+  validatedAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  sessions              Session[]
+  validationRequests    PersonValidationRequest[]       @relation("ValidationRequester")
+  decidedValidations    PersonValidationRequest[]       @relation("ValidationDecider")
+  notifications         Notification[]
+  auditLogs             AuditLog[]                      @relation("AuditActor")
+  organizationMemberships OrganizationMember[]
+  submittedOrgValidations OrganizationValidationRequest[] @relation("OrgValidationSubmitter")
+  decidedOrgValidations OrganizationValidationRequest[] @relation("OrgValidationDecider")
+  ownedCampaigns          Campaign[]                      @relation("CampaignOwnerPerson")
+  createdCampaigns        Campaign[]                      @relation("CampaignCreator")
+
+  @@map("people")
+}
+
+enum OrganizationRole {
+  REPRESENTATIVE
+  MEMBER
+}
+
+model Organization {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  // Validação de Organização aprovada habilita página pública e campanhas
+  // em nome da organização.
+  validatedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members            OrganizationMember[]
+  validationRequests OrganizationValidationRequest[]
+  ownedCampaigns     Campaign[]
+
+  @@map("organizations")
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_REVIEW
+  REJECTED
+  PUBLISHED
+  CLOSED
+  SUSPENDED
+}
+
+enum CampaignCategory {
+  FOOD
+  CLOTHING
+  HEALTH
+  EDUCATION
+  HOUSING
+  ANIMALS
+  ENVIRONMENT
+  OTHER
+}
+
+enum SupportType {
+  ITEM_DONATION
+  VOLUNTEER
+  EXTERNAL_FINANCIAL
+}
+
+model Campaign {
+  id                  String           @id @default(cuid())
+  title               String
+  description         String
+  category            CampaignCategory
+  status              CampaignStatus   @default(DRAFT)
+  supportTypes        SupportType[]
+  // Descrição da necessidade ou meta mensurável da campanha.
+  goalDescription     String
+  supportInstructions String
+  locality            String
+  // Pin público do mapa, escolhido manualmente pelo criador. Coordenadas
+  // arredondadas (~100 m) para não expor endereço exato por padrão.
+  latitude            Float?
+  longitude           Float?
+  // Ponto logístico privado (endereço exato, horários): nunca aparece em
+  // páginas públicas; visível só para envolvidos e moderação.
+  logisticsDetails    String?
+  // null = campanha explicitamente sem prazo.
+  deadline            DateTime?
+  // Dono exclusivo: exatamente um entre pessoa validada e organização
+  // validada (garantido na camada de aplicação).
+  ownerPersonId       String?
+  ownerOrganizationId String?
+  createdById         String
+  // Motivo da última decisão negativa de moderação (rejeição/suspensão),
+  // exibido ao dono; limpo ao reenviar para revisão ou publicar.
+  statusReason        String?
+  // Última movimentação real (criação, edição, apoio confirmado) — base do
+  // cálculo de inatividade. updatedAt não serve porque é bumpado por
+  // atualizações técnicas, como o próprio aviso de inatividade.
+  lastActivityAt      DateTime         @default(now())
+  // Última vez que o dono foi avisado de inatividade; evita notificação
+  // repetida no mesmo período parado.
+  inactivityNotifiedAt DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  ownerPerson       Person?       @relation("CampaignOwnerPerson", fields: [ownerPersonId], references: [id])
+  ownerOrganization Organization? @relation(fields: [ownerOrganizationId], references: [id])
+  createdBy         Person        @relation("CampaignCreator", fields: [createdById], references: [id])
+
+  @@map("campaigns")
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  personId       String
+  role           OrganizationRole @default(MEMBER)
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  person       Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, personId])
+  @@map("organization_members")
+}
+
+model OrganizationValidationRequest {
+  id                String           @id @default(cuid())
+  organizationId    String
+  submittedById     String
+  status            ValidationStatus @default(PENDING)
+  note              String?
+  documentConsentAt DateTime
+  decisionReason    String?
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  organization Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submittedBy  Person                           @relation("OrgValidationSubmitter", fields: [submittedById], references: [id])
+  decidedBy    Person?                          @relation("OrgValidationDecider", fields: [decidedById], references: [id])
+  documents    OrganizationValidationDocument[]
+
+  @@map("organization_validation_requests")
+}
+
+model OrganizationValidationDocument {
+  id         String   @id @default(cuid())
+  requestId  String
+  fileName   String
+  storedName String   @unique
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  request OrganizationValidationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("organization_validation_documents")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  personId  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+enum ValidationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+model PersonValidationRequest {
+  id                String           @id @default(cuid())
+  personId          String
+  status            ValidationStatus @default(PENDING)
+  // Mensagem opcional de quem solicita (contexto, correções após rejeição).
+  note              String?
+  // Consentimento específico para envio de documentos é obrigatório.
+  documentConsentAt DateTime
+  decisionReason    String?
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  person    Person               @relation("ValidationRequester", fields: [personId], references: [id], onDelete: Cascade)
+  decidedBy Person?              @relation("ValidationDecider", fields: [decidedById], references: [id])
+  documents ValidationDocument[]
+
+  @@map("person_validation_requests")
+}
+
+model ValidationDocument {
+  id         String   @id @default(cuid())
+  requestId  String
+  // Nome original mostrado na interface; storedName é o nome aleatório no
+  // armazenamento privado (fora de public/).
+  fileName   String
+  storedName String   @unique
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  request PersonValidationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("validation_documents")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  personId  String
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  actor Person? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}

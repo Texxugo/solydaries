@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: solydaries-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: solydaries
+      POSTGRES_PASSWORD: solydaries
+      POSTGRES_DB: solydaries
+    ports:
+      - "5432:5432"
+    volumes:
+      - solydaries_pgdata:/var/lib/postgresql/data
+
+volumes:
+  solydaries_pgdata:
