@@ -40,6 +40,7 @@ model Person {
   createdCampaigns        Campaign[]                      @relation("CampaignCreator")
   submittedCampaignChanges CampaignChangeRequest[]        @relation("CampaignChangeSubmitter")
   decidedCampaignChanges  CampaignChangeRequest[]         @relation("CampaignChangeDecider")
+  supportOffers           SupportOffer[]                  @relation("SupportOfferDonor")
 
   @@map("people")
 }
@@ -135,6 +136,7 @@ model Campaign {
   ownerOrganization Organization? @relation(fields: [ownerOrganizationId], references: [id])
   createdBy         Person        @relation("CampaignCreator", fields: [createdById], references: [id])
   changeRequests    CampaignChangeRequest[]
+  supportOffers     SupportOffer[]
 
   @@map("campaigns")
 }
@@ -175,6 +177,53 @@ model CampaignChangeRequest {
   decidedBy   Person?  @relation("CampaignChangeDecider", fields: [decidedById], references: [id])
 
   @@map("campaign_change_requests")
+}
+
+enum SupportOfferType {
+  ITEM_DONATION
+  VOLUNTEER
+}
+
+// Ciclo de vida da Oferta de Apoio. Criação e cancelamento pelo Doador são
+// da issue 010; confirmação/recusa pela gestão chegam na issue 011.
+enum SupportOfferStatus {
+  PENDING
+  CONFIRMED
+  DONOR_CANCELLED
+  MANAGER_DECLINED
+}
+
+// Oferta de Apoio registrada por um Doador numa campanha publicada. Não passa
+// por moderação para ficar visível à gestão da campanha; os detalhes (contato,
+// item, disponibilidade) nunca aparecem em páginas públicas.
+model SupportOffer {
+  id                String             @id @default(cuid())
+  campaignId        String
+  donorId           String
+  type              SupportOfferType
+  status            SupportOfferStatus @default(PENDING)
+  // Anonimato público: oculta o Doador nas páginas públicas, mas o vínculo
+  // interno com o Doador permanece rastreável.
+  publiclyAnonymous Boolean            @default(false)
+  // Contato para coordenação (telefone, e-mail), visível só à gestão.
+  contact           String
+  // Doação de item: detalhes do item ofertado.
+  itemName          String?
+  itemQuantity      String?
+  itemCondition     String?
+  coordinationPreference String?
+  // Voluntariado: detalhes da disponibilidade.
+  availability      String?
+  helpType          String?
+  // Observação livre do Doador.
+  note              String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  donor    Person   @relation("SupportOfferDonor", fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@map("support_offers")
 }
 
 model OrganizationMember {

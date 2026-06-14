@@ -19,6 +19,10 @@ import {
   categoryLabels,
   supportTypeLabels,
 } from "@/lib/campaign-labels";
+import { supportOfferTypeLabels } from "@/lib/support-offer-labels";
+import { CancelarApoio, FormularioApoio } from "./apoio";
+
+const OFFERABLE_TYPES = ["ITEM_DONATION", "VOLUNTEER"] as const;
 
 export const metadata: Metadata = {
   title: "Campanha — Solydaries",
@@ -67,6 +71,26 @@ export default async function CampanhaPage({
   }
   const isModerator = person ? canModerate(person) : false;
   const canManage = person ? await canManageCampaign(person, campaign) : false;
+
+  // Progresso público agregado: número de apoios já confirmados.
+  const confirmedCount = await prisma.supportOffer.count({
+    where: { campaignId: campaign.id, status: "CONFIRMED" },
+  });
+
+  // Oferta de Apoio pendente do próprio Doador nesta campanha (se houver).
+  const myPendingOffer =
+    person && !canManage
+      ? await prisma.supportOffer.findFirst({
+          where: { campaignId: campaign.id, donorId: person.id, status: "PENDING" },
+        })
+      : null;
+
+  // Tipos de apoio ofertáveis aceitos pela campanha (doação financeira legada
+  // fica de fora).
+  const acceptedOfferTypes = campaign.supportTypes.filter(
+    (type): type is (typeof OFFERABLE_TYPES)[number] =>
+      OFFERABLE_TYPES.includes(type as (typeof OFFERABLE_TYPES)[number])
+  );
 
   // Modo gestão: dono, criador, representante ou moderação. Os demais
   // (inclusive visitantes) só veem campanhas publicadas/encerradas, em modo
@@ -205,7 +229,99 @@ export default async function CampanhaPage({
               Progresso agregado e público da campanha.
             </p>
           </div>
-          <p className="font-display text-2xl font-bold text-brand-700">0</p>
+          <p className="font-display text-2xl font-bold text-brand-700">
+            {confirmedCount}
+          </p>
+        </div>
+      )}
+
+      {campaign.status === "PUBLISHED" && !canManage && (
+        <div className="mb-8">
+          {!person ? (
+            <div className="flex flex-col items-start gap-3 rounded-3xl bg-brand-50 p-6 ring-1 ring-brand-100">
+              <p className="text-sm font-semibold text-brand-800">
+                Quer ajudar esta campanha?
+              </p>
+              <p className="text-sm text-brand-700">
+                Entre na sua conta para registrar uma oferta de apoio. Visitantes
+                não podem oferecer apoio.
+              </p>
+              <Link
+                href="/entrar"
+                className="rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-200 transition hover:from-brand-600 hover:to-brand-700"
+              >
+                Entrar para apoiar
+              </Link>
+            </div>
+          ) : myPendingOffer ? (
+            <div className="rounded-3xl bg-white p-6 shadow-xl shadow-stone-200/60 ring-1 ring-stone-100">
+              <h2 className="mb-1 font-display text-lg font-bold text-stone-900">
+                Sua oferta de apoio
+              </h2>
+              <p className="mb-4 text-sm text-stone-500">
+                Aguardando a equipe da campanha entrar em contato.
+              </p>
+              <dl className="mb-5 space-y-2 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-stone-500">Tipo</dt>
+                  <dd className="font-medium text-stone-800">
+                    {supportOfferTypeLabels[myPendingOffer.type]}
+                  </dd>
+                </div>
+                {myPendingOffer.type === "ITEM_DONATION" ? (
+                  <>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-stone-500">Item</dt>
+                      <dd className="font-medium text-stone-800">
+                        {myPendingOffer.itemName} ({myPendingOffer.itemQuantity})
+                      </dd>
+                    </div>
+                    {myPendingOffer.itemCondition && (
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-stone-500">Condição</dt>
+                        <dd className="font-medium text-stone-800">
+                          {myPendingOffer.itemCondition}
+                        </dd>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-stone-500">Disponibilidade</dt>
+                      <dd className="font-medium text-stone-800">
+                        {myPendingOffer.availability}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-stone-500">Tipo de ajuda</dt>
+                      <dd className="font-medium text-stone-800">
+                        {myPendingOffer.helpType}
+                      </dd>
+                    </div>
+                  </>
+                )}
+                {myPendingOffer.publiclyAnonymous && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-stone-500">Visibilidade</dt>
+                    <dd className="font-medium text-stone-800">
+                      Anônima publicamente
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              <CancelarApoio offerId={myPendingOffer.id} />
+            </div>
+          ) : acceptedOfferTypes.length > 0 ? (
+            <FormularioApoio
+              campaignId={campaign.id}
+              acceptedTypes={acceptedOfferTypes}
+            />
+          ) : (
+            <p className="rounded-2xl border border-stone-100 p-6 text-center text-sm text-stone-500">
+              Esta campanha não aceita ofertas de apoio pela plataforma.
+            </p>
+          )}
         </div>
       )}
 
