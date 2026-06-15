@@ -6,13 +6,13 @@ Permitir que **Responsáveis** e **Gestores da Campanha** acompanhem Ofertas de 
 
 ## Acceptance criteria
 
-- [ ] Responsáveis e Gestores veem Ofertas de Apoio de suas Campanhas.
-- [ ] Donos de outras Campanhas não conseguem ver detalhes privados.
-- [ ] Doador consegue cancelar sua própria Oferta pendente.
-- [ ] Responsável ou Gestor consegue confirmar Oferta como Apoio Confirmado.
-- [ ] Responsável ou Gestor consegue recusar Oferta com motivo.
-- [ ] Doador não consegue confirmar a própria Oferta.
-- [ ] Progresso público usa apenas Apoios Confirmados.
+- [x] Responsáveis e Gestores veem Ofertas de Apoio de suas Campanhas.
+- [x] Donos de outras Campanhas não conseguem ver detalhes privados.
+- [x] Doador consegue cancelar sua própria Oferta pendente.
+- [x] Responsável ou Gestor consegue confirmar Oferta como Apoio Confirmado.
+- [x] Responsável ou Gestor consegue recusar Oferta com motivo.
+- [x] Doador não consegue confirmar a própria Oferta.
+- [x] Progresso público usa apenas Apoios Confirmados.
 
 ## Blocked by
 

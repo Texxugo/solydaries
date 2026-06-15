@@ -41,6 +41,11 @@ model Person {
   submittedCampaignChanges CampaignChangeRequest[]        @relation("CampaignChangeSubmitter")
   decidedCampaignChanges  CampaignChangeRequest[]         @relation("CampaignChangeDecider")
   supportOffers           SupportOffer[]                  @relation("SupportOfferDonor")
+  decidedSupportOffers    SupportOffer[]                  @relation("SupportOfferDecider")
+  authoredPosts           OrganizationPost[]              @relation("PostAuthor")
+  postReactions           PostReaction[]                  @relation("PostReactor")
+  reports                 Report[]                        @relation("ReportReporter")
+  resolvedReports         Report[]                        @relation("ReportResolver")
 
   @@map("people")
 }
@@ -54,6 +59,14 @@ model Organization {
   id          String    @id @default(cuid())
   name        String
   description String?
+  // Contatos públicos exibidos na Página da Organização (opcionais, definidos
+  // pelos representantes). Nunca incluem documentos privados de validação.
+  publicEmail String?
+  phone       String?
+  website     String?
+  // Imagens públicas do perfil (logo/avatar e capa).
+  logoUrl     String?
+  coverUrl    String?
   isActive    Boolean   @default(true)
   // Validação de Organização aprovada habilita página pública e campanhas
   // em nome da organização.
@@ -64,6 +77,7 @@ model Organization {
   members            OrganizationMember[]
   validationRequests OrganizationValidationRequest[]
   ownedCampaigns     Campaign[]
+  posts              OrganizationPost[]
 
   @@map("organizations")
 }
@@ -137,6 +151,7 @@ model Campaign {
   createdBy         Person        @relation("CampaignCreator", fields: [createdById], references: [id])
   changeRequests    CampaignChangeRequest[]
   supportOffers     SupportOffer[]
+  reports           Report[]
 
   @@map("campaigns")
 }
@@ -217,11 +232,17 @@ model SupportOffer {
   helpType          String?
   // Observação livre do Doador.
   note              String?
+  // Decisão da gestão (issue 011): motivo da recusa e quem/quando decidiu.
+  declineReason     String?
+  decidedById       String?
+  decidedAt         DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  donor    Person   @relation("SupportOfferDonor", fields: [donorId], references: [id], onDelete: Cascade)
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  donor     Person   @relation("SupportOfferDonor", fields: [donorId], references: [id], onDelete: Cascade)
+  decidedBy Person?  @relation("SupportOfferDecider", fields: [decidedById], references: [id])
+  reports   Report[]
 
   @@map("support_offers")
 }
@@ -273,6 +294,96 @@ model OrganizationValidationDocument {
   request OrganizationValidationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@map("organization_validation_documents")
+}
+
+enum OrganizationPostStatus {
+  PUBLISHED
+  HIDDEN
+  SUSPENDED
+}
+
+// Post de Organização: atualização (texto, imagens, link de vídeo externo)
+// publicada na Página da Organização. Pode ser ocultado pelo representante ou
+// suspenso pela moderação.
+model OrganizationPost {
+  id             String                 @id @default(cuid())
+  organizationId String
+  authorId       String
+  status         OrganizationPostStatus @default(PUBLISHED)
+  content        String
+  imageUrls      String[]
+  // Link externo de vídeo (YouTube etc.); upload de vídeo está fora do MVP.
+  videoUrl       String?
+  // Motivo da suspensão pela moderação.
+  statusReason   String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author       Person         @relation("PostAuthor", fields: [authorId], references: [id])
+  reactions    PostReaction[]
+  reports      Report[]
+
+  @@map("organization_posts")
+}
+
+// Reação leve de um Doador a um Post; no máximo uma por post por doador. As
+// páginas públicas mostram apenas a contagem agregada, nunca a lista.
+model PostReaction {
+  id        String   @id @default(cuid())
+  postId    String
+  donorId   String
+  createdAt DateTime @default(now())
+
+  post  OrganizationPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  donor Person           @relation("PostReactor", fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, donorId])
+  @@map("post_reactions")
+}
+
+enum ReportTargetType {
+  CAMPAIGN
+  ORGANIZATION_POST
+  SUPPORT_OFFER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+}
+
+enum ReportResolution {
+  DISMISSED
+  UPHELD
+}
+
+// Denúncia de conteúdo abusivo. Sempre vinculada a um objeto concreto:
+// exatamente um entre campaignId, organizationPostId e supportOfferId é
+// preenchido, conforme targetType (garantido na camada de aplicação).
+model Report {
+  id                 String            @id @default(cuid())
+  reporterId         String
+  targetType         ReportTargetType
+  campaignId         String?
+  organizationPostId String?
+  supportOfferId     String?
+  reason             String
+  status             ReportStatus      @default(OPEN)
+  resolution         ReportResolution?
+  resolutionNote     String?
+  resolvedById       String?
+  resolvedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  reporter         Person            @relation("ReportReporter", fields: [reporterId], references: [id])
+  resolvedBy       Person?           @relation("ReportResolver", fields: [resolvedById], references: [id])
+  campaign         Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  organizationPost OrganizationPost? @relation(fields: [organizationPostId], references: [id], onDelete: Cascade)
+  supportOffer     SupportOffer?     @relation(fields: [supportOfferId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
 }
 
 model Session {

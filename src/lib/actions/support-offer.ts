@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSessionPerson } from "@/lib/session";
-import { campaignNotificationRecipients } from "@/lib/campaign-authz";
+import {
+  campaignNotificationRecipients,
+  canManageCampaign,
+} from "@/lib/campaign-authz";
 import { supportOfferTypeLabels } from "@/lib/support-offer-labels";
 import {
   readSupportOfferFormData,
@@ -20,6 +23,12 @@ export type SupportOfferFormState = {
 };
 
 const idSchema = z.string().min(1);
+
+const reasonSchema = z
+  .string()
+  .trim()
+  .min(5, "Informe o motivo (mínimo de 5 caracteres).")
+  .max(1000, "O motivo pode ter no máximo 1000 caracteres.");
 
 // Doador registra uma Oferta de Apoio numa campanha publicada. Visitantes não
 // autenticados são mandados para o login; a oferta fica visível à gestão sem
@@ -127,6 +136,126 @@ export async function cancelSupportOfferAction(
         action: "support_offer.cancelled",
         targetType: "SupportOffer",
         targetId: offer.id,
+      },
+    }),
+  ]);
+
+  revalidatePath(`/campanhas/${offer.campaignId}`);
+  revalidatePath("/meus-apoios");
+  return { success: true };
+}
+
+// Carrega a oferta com a campanha e confere que a pessoa é responsável/gestora
+// dela. Usado por confirmar e recusar.
+async function loadManageableOffer(personId: string, offerId: string) {
+  const person = await prisma.person.findUnique({ where: { id: personId } });
+  if (!person) return { error: "Sessão inválida." as const };
+
+  const offer = await prisma.supportOffer.findUnique({
+    where: { id: offerId },
+    include: { campaign: true },
+  });
+  if (!offer) return { error: "Oferta de apoio não encontrada." as const };
+
+  if (!(await canManageCampaign(person, offer.campaign))) {
+    return { error: "Você não é responsável por esta campanha." as const };
+  }
+  if (offer.status !== "PENDING") {
+    return { error: "Esta oferta já foi decidida." as const };
+  }
+  return { offer };
+}
+
+// Responsável/Gestor confirma a oferta como Apoio Confirmado.
+export async function confirmSupportOfferAction(
+  _prevState: SupportOfferFormState,
+  formData: FormData
+): Promise<SupportOfferFormState> {
+  const person = await getSessionPerson();
+  if (!person) redirect("/entrar");
+
+  const offerId = idSchema.parse(formData.get("offerId"));
+  const loaded = await loadManageableOffer(person.id, offerId);
+  if ("error" in loaded) return { error: loaded.error };
+  const { offer } = loaded;
+
+  await prisma.$transaction([
+    prisma.supportOffer.update({
+      where: { id: offer.id },
+      data: { status: "CONFIRMED", decidedById: person.id, decidedAt: new Date() },
+    }),
+    // Apoio confirmado conta como atividade real da campanha.
+    prisma.campaign.update({
+      where: { id: offer.campaignId },
+      data: { lastActivityAt: new Date() },
+    }),
+    prisma.auditLog.create({
+      data: {
+        actorId: person.id,
+        action: "support_offer.confirmed",
+        targetType: "SupportOffer",
+        targetId: offer.id,
+      },
+    }),
+    prisma.notification.create({
+      data: {
+        personId: offer.donorId,
+        title: "Apoio confirmado 🎉",
+        body: `Seu apoio à campanha "${offer.campaign.title}" foi confirmado pela equipe.`,
+        href: `/campanhas/${offer.campaignId}`,
+      },
+    }),
+  ]);
+
+  revalidatePath(`/campanhas/${offer.campaignId}`);
+  revalidatePath("/meus-apoios");
+  return { success: true };
+}
+
+// Responsável/Gestor recusa a oferta, com motivo obrigatório.
+export async function declineSupportOfferAction(
+  _prevState: SupportOfferFormState,
+  formData: FormData
+): Promise<SupportOfferFormState> {
+  const person = await getSessionPerson();
+  if (!person) redirect("/entrar");
+
+  const offerId = idSchema.parse(formData.get("offerId"));
+  const parsedReason = reasonSchema.safeParse(formData.get("reason"));
+  if (!parsedReason.success) {
+    return { error: parsedReason.error.issues[0].message };
+  }
+  const reason = parsedReason.data;
+
+  const loaded = await loadManageableOffer(person.id, offerId);
+  if ("error" in loaded) return { error: loaded.error };
+  const { offer } = loaded;
+
+  await prisma.$transaction([
+    prisma.supportOffer.update({
+      where: { id: offer.id },
+      data: {
+        status: "MANAGER_DECLINED",
+        declineReason: reason,
+        decidedById: person.id,
+        decidedAt: new Date(),
+      },
+    }),
+    prisma.auditLog.create({
+      data: {
+        actorId: person.id,
+        action: "support_offer.declined",
+        targetType: "SupportOffer",
+        targetId: offer.id,
+        reason,
+      },
+    }),
+    prisma.notification.create({
+      data: {
+        personId: offer.donorId,
+        title: "Oferta de apoio recusada",
+        body: `Sua oferta de apoio à campanha "${offer.campaign.title}" foi recusada. Motivo: ${reason}`,
+        href: `/campanhas/${offer.campaignId}`,
       },
     }),
   ]);
