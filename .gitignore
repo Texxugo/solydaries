@@ -44,3 +44,6 @@ next-env.d.ts
 
 # private uploaded files
 /storage
+
+# public uploaded files (imagens de posts/campanhas em dev)
+/public/uploads
