@@ -6,13 +6,13 @@ Implementar **Denúncias** para Campanhas publicadas, Posts de Organização e O
 
 ## Acceptance criteria
 
-- [ ] Doadores conseguem denunciar Campanhas publicadas.
-- [ ] Doadores conseguem denunciar Posts de Organização.
-- [ ] Responsáveis e Gestores conseguem denunciar Ofertas de Apoio recebidas.
-- [ ] Denúncias sempre ficam vinculadas a um objeto concreto.
-- [ ] Moderadores conseguem resolver denúncias com decisão e motivo.
-- [ ] Moderadores conseguem suspender conteúdo quando necessário.
-- [ ] Resoluções geram notificação interna e registro de auditoria.
+- [x] Doadores conseguem denunciar Campanhas publicadas.
+- [x] Doadores conseguem denunciar Posts de Organização.
+- [x] Responsáveis e Gestores conseguem denunciar Ofertas de Apoio recebidas.
+- [x] Denúncias sempre ficam vinculadas a um objeto concreto.
+- [x] Moderadores conseguem resolver denúncias com decisão e motivo.
+- [x] Moderadores conseguem suspender conteúdo quando necessário.
+- [x] Resoluções geram notificação interna e registro de auditoria.
 
 ## Blocked by
 
