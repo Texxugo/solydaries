@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSessionPerson } from "@/lib/session";
 import { canModerate } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Moderação — Solydaries",
 };
 
-const queues = [
+const baseQueues = [
   {
     title: "Campanhas sem movimentação",
     text: "Campanhas paradas há mais de 30 dias, com donos já notificados.",
@@ -27,11 +28,6 @@ const queues = [
     href: "/moderacao/alteracoes",
   },
   {
-    title: "Denúncias",
-    text: "Denúncias de campanhas, posts e ofertas de apoio.",
-    status: "Disponível na issue 014",
-  },
-  {
     title: "Relatos de resultado",
     text: "Relatos de resultado de campanhas encerradas aguardando aprovação.",
     status: "Disponível na issue 015",
@@ -42,6 +38,23 @@ export default async function ModeracaoPage() {
   const person = await getSessionPerson();
   if (!person) redirect("/entrar");
   if (!canModerate(person)) redirect("/painel");
+
+  const openReports = await prisma.report.count({ where: { status: "OPEN" } });
+
+  // A fila de denúncias entra antes dos relatos, com a contagem em aberto.
+  const queues = [
+    ...baseQueues.slice(0, 3),
+    {
+      title: "Denúncias",
+      text: "Denúncias de campanhas, posts e ofertas de apoio.",
+      status:
+        openReports > 0
+          ? `Abrir fila (${openReports} em aberto)`
+          : "Abrir fila de denúncias",
+      href: "/moderacao/denuncias",
+    },
+    ...baseQueues.slice(3),
+  ];
 
   return (
     <section className="mx-auto max-w-4xl px-6 py-16">

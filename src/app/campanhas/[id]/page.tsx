@@ -19,6 +19,12 @@ import {
   categoryLabels,
   supportTypeLabels,
 } from "@/lib/campaign-labels";
+import { supportOfferTypeLabels } from "@/lib/support-offer-labels";
+import { Denunciar } from "@/components/denunciar";
+import { reportCampaignAction } from "@/lib/actions/report";
+import { CancelarApoio, FormularioApoio } from "./apoio";
+
+const OFFERABLE_TYPES = ["ITEM_DONATION", "VOLUNTEER"] as const;
 
 export const metadata: Metadata = {
   title: "Campanha — Solydaries",
@@ -68,6 +74,37 @@ export default async function CampanhaPage({
   const isModerator = person ? canModerate(person) : false;
   const canManage = person ? await canManageCampaign(person, campaign) : false;
 
+  // Progresso público agregado: número de apoios já confirmados.
+  const confirmedCount = await prisma.supportOffer.count({
+    where: { campaignId: campaign.id, status: "CONFIRMED" },
+  });
+
+  // Oferta de Apoio pendente do próprio Doador nesta campanha (se houver).
+  const myPendingOffer =
+    person && !canManage
+      ? await prisma.supportOffer.findFirst({
+          where: { campaignId: campaign.id, donorId: person.id, status: "PENDING" },
+        })
+      : null;
+
+  // Tipos de apoio ofertáveis aceitos pela campanha (doação financeira legada
+  // fica de fora).
+  const acceptedOfferTypes = campaign.supportTypes.filter(
+    (type): type is (typeof OFFERABLE_TYPES)[number] =>
+      OFFERABLE_TYPES.includes(type as (typeof OFFERABLE_TYPES)[number])
+  );
+
+  // Resumo das ofertas recebidas para a gestão; a lista completa (que pode
+  // crescer bastante) fica em /campanhas/[id]/apoios.
+  const offersTotal = canManage
+    ? await prisma.supportOffer.count({ where: { campaignId: campaign.id } })
+    : 0;
+  const pendingOffersCount = canManage
+    ? await prisma.supportOffer.count({
+        where: { campaignId: campaign.id, status: "PENDING" },
+      })
+    : 0;
+
   // Modo gestão: dono, criador, representante ou moderação. Os demais
   // (inclusive visitantes) só veem campanhas publicadas/encerradas, em modo
   // público — sem dados privados nem ações.
@@ -99,7 +136,7 @@ export default async function CampanhaPage({
     canManage &&
     (campaign.status === "DRAFT" || campaign.status === "REJECTED");
   const showDecision = isModerator && campaign.status === "PENDING_REVIEW";
-  const showQuickRow = showEditLink || showClose || showSuspend;
+  const showQuickRow = showEditLink || showClose || showSuspend || canManage;
   const showActions = showQuickRow || showSubmit || showDecision;
 
   const fields = [
@@ -125,6 +162,11 @@ export default async function CampanhaPage({
         : "Sem prazo definido",
     },
     { label: "Instruções de apoio", value: campaign.supportInstructions },
+    // Progresso público agregado: só apoios confirmados, e só em campanhas
+    // já visíveis publicamente.
+    ...(isDiscoverable
+      ? [{ label: "Apoios confirmados", value: String(confirmedCount) }]
+      : []),
   ];
 
   return (
@@ -195,28 +237,13 @@ export default async function CampanhaPage({
         </div>
       )}
 
-      {isDiscoverable && (
-        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl bg-brand-50 p-5 ring-1 ring-brand-100">
-          <div>
-            <p className="text-sm font-semibold text-brand-800">
-              Apoios confirmados
-            </p>
-            <p className="text-xs text-brand-700">
-              Progresso agregado e público da campanha.
-            </p>
-          </div>
-          <p className="font-display text-2xl font-bold text-brand-700">0</p>
-        </div>
-      )}
-
-      <div className="mb-8 rounded-2xl bg-stone-50 p-5 text-stone-700 ring-1 ring-stone-100">
-        <p className="mb-1 text-sm font-semibold text-stone-900">Descrição</p>
-        <p className="whitespace-pre-line text-sm leading-relaxed">
-          {campaign.description}
-        </p>
-      </div>
-
       <dl className="mb-8 divide-y divide-stone-100 rounded-2xl border border-stone-100">
+        <div className="flex flex-col gap-1 px-5 py-4">
+          <dt className="shrink-0 text-sm text-stone-500">Descrição</dt>
+          <dd className="whitespace-pre-line text-sm font-medium leading-relaxed text-stone-800">
+            {campaign.description}
+          </dd>
+        </div>
         {fields.map((field) => (
           <div
             key={field.label}
@@ -242,6 +269,96 @@ export default async function CampanhaPage({
         </div>
       )}
 
+      {campaign.status === "PUBLISHED" && !canManage && (
+        <div className="mb-8">
+          {!person ? (
+            <div className="flex flex-col items-start gap-3 rounded-3xl bg-brand-50 p-6 ring-1 ring-brand-100">
+              <p className="text-sm font-semibold text-brand-800">
+                Quer ajudar esta campanha?
+              </p>
+              <p className="text-sm text-brand-700">
+                Entre na sua conta para registrar uma oferta de apoio. Visitantes
+                não podem oferecer apoio.
+              </p>
+              <Link
+                href="/entrar"
+                className="rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-200 transition hover:from-brand-600 hover:to-brand-700"
+              >
+                Entrar para apoiar
+              </Link>
+            </div>
+          ) : myPendingOffer ? (
+            <div className="rounded-3xl bg-white p-6 shadow-xl shadow-stone-200/60 ring-1 ring-stone-100">
+              <h2 className="mb-1 font-display text-lg font-bold text-stone-900">
+                Sua oferta de apoio
+              </h2>
+              <p className="mb-4 text-sm text-stone-500">
+                Aguardando a equipe da campanha entrar em contato.
+              </p>
+              <dl className="mb-5 space-y-2 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-stone-500">Tipo</dt>
+                  <dd className="font-medium text-stone-800">
+                    {supportOfferTypeLabels[myPendingOffer.type]}
+                  </dd>
+                </div>
+                {myPendingOffer.type === "ITEM_DONATION" ? (
+                  <>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-stone-500">Item</dt>
+                      <dd className="font-medium text-stone-800">
+                        {myPendingOffer.itemName} ({myPendingOffer.itemQuantity})
+                      </dd>
+                    </div>
+                    {myPendingOffer.itemCondition && (
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-stone-500">Condição</dt>
+                        <dd className="font-medium text-stone-800">
+                          {myPendingOffer.itemCondition}
+                        </dd>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-stone-500">Disponibilidade</dt>
+                      <dd className="font-medium text-stone-800">
+                        {myPendingOffer.availability}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-stone-500">Tipo de ajuda</dt>
+                      <dd className="font-medium text-stone-800">
+                        {myPendingOffer.helpType}
+                      </dd>
+                    </div>
+                  </>
+                )}
+                {myPendingOffer.publiclyAnonymous && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-stone-500">Visibilidade</dt>
+                    <dd className="font-medium text-stone-800">
+                      Anônima publicamente
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              <CancelarApoio offerId={myPendingOffer.id} />
+            </div>
+          ) : acceptedOfferTypes.length > 0 ? (
+            <FormularioApoio
+              campaignId={campaign.id}
+              acceptedTypes={acceptedOfferTypes}
+            />
+          ) : (
+            <p className="rounded-2xl border border-stone-100 p-6 text-center text-sm text-stone-500">
+              Esta campanha não aceita ofertas de apoio pela plataforma.
+            </p>
+          )}
+        </div>
+      )}
+
       {canViewManagement && campaign.logisticsDetails && (
         <div className="rounded-2xl bg-amber-50 p-5 ring-1 ring-amber-200">
           <p className="mb-1 text-sm font-semibold text-amber-800">
@@ -257,6 +374,17 @@ export default async function CampanhaPage({
         </div>
       )}
 
+      {person && !canManage && campaign.status === "PUBLISHED" && (
+        <div className="mt-8 border-t border-stone-100 pt-6">
+          <Denunciar
+            action={reportCampaignAction}
+            idName="campaignId"
+            idValue={campaign.id}
+            label="Denunciar campanha"
+          />
+        </div>
+      )}
+
       {showActions && (
         <div className="mt-10 border-t border-stone-100 pt-8">
           <h2 className="mb-4 font-display text-lg font-bold text-stone-900">
@@ -265,6 +393,19 @@ export default async function CampanhaPage({
           <div className="flex flex-col gap-4">
             {showQuickRow && (
               <div className="flex flex-wrap gap-3">
+                {canManage && (
+                  <Link
+                    href={`/campanhas/${campaign.id}/apoios`}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-200 transition hover:from-brand-600 hover:to-brand-700"
+                  >
+                    Gerenciar apoios ({offersTotal})
+                    {pendingOffersCount > 0 && (
+                      <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-brand-700">
+                        {pendingOffersCount} novo{pendingOffersCount > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </Link>
+                )}
                 {showEditLink && (
                   <Link
                     href={`/campanhas/${campaign.id}/editar`}

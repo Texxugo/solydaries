@@ -22,7 +22,10 @@ export const config = {
     "/admin/:path*",
     "/moderacao/:path*",
     "/validacao/:path*",
-    "/organizacoes/:path*",
+    // A Página da Organização (/organizacoes/[id]) é pública para organizações
+    // validadas; só a lista pessoal e a edição exigem login.
+    "/organizacoes",
+    "/organizacoes/:id/editar",
     // A descoberta pública /campanhas e a página da campanha são abertas a
     // visitantes; só criação e edição exigem login.
     "/minhas-campanhas/:path*",

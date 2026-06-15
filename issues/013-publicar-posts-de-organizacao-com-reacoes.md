@@ -6,13 +6,13 @@ Permitir que representantes autorizados publiquem **Posts de Organização** com
 
 ## Acceptance criteria
 
-- [ ] Representante autorizado consegue criar Post em Organização validada.
-- [ ] Posts aceitam texto, imagens e link externo de vídeo.
-- [ ] Posts podem ficar publicados, ocultos ou suspensos.
-- [ ] Posts publicados aparecem na Página da Organização.
-- [ ] Doadores conseguem reagir uma vez por Post publicado.
-- [ ] A página mostra apenas contagem agregada de reações.
-- [ ] Comentários não existem no MVP.
+- [x] Representante autorizado consegue criar Post em Organização validada.
+- [x] Posts aceitam texto, imagens e link externo de vídeo.
+- [x] Posts podem ficar publicados, ocultos ou suspensos.
+- [x] Posts publicados aparecem na Página da Organização.
+- [x] Doadores conseguem reagir uma vez por Post publicado.
+- [x] A página mostra apenas contagem agregada de reações.
+- [x] Comentários não existem no MVP.
 
 ## Blocked by
 

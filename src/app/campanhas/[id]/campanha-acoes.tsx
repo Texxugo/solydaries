@@ -230,7 +230,7 @@ export function EncerrarCampanha({ campaignId }: { campaignId: string }) {
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        className="cursor-pointer rounded-xl border-2 border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:border-sky-300 hover:text-sky-700"
+        className="cursor-pointer rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-sky-200 transition hover:bg-sky-700"
       >
         Encerrar campanha
       </button>

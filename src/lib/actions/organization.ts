@@ -12,6 +12,11 @@ import {
   maxDocumentSizeBytes,
   savePrivateFile,
 } from "@/lib/private-files";
+import {
+  allowedImageMimeTypes,
+  maxImageSizeBytes,
+  savePublicImage,
+} from "@/lib/public-files";
 
 export type OrganizationFormState = {
   error?: string;
@@ -84,6 +89,98 @@ export async function createOrganizationAction(
 
   revalidatePath("/organizacoes");
   redirect(`/organizacoes/${organization.id}`);
+}
+
+// Converte "" em undefined para validar campos opcionais corretamente.
+const emptyToUndefined = (value: unknown) =>
+  typeof value === "string" && value.trim() === "" ? undefined : value;
+
+const updateOrgProfileSchema = z.object({
+  description: z
+    .string()
+    .trim()
+    .max(2000, "A descrição pode ter no máximo 2000 caracteres.")
+    .optional(),
+  publicEmail: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().email("Informe um e-mail válido.").max(200).optional()
+  ),
+  phone: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().max(40, "O telefone pode ter no máximo 40 caracteres.").optional()
+  ),
+  website: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().max(200, "O site pode ter no máximo 200 caracteres.").optional()
+  ),
+});
+
+// Lê uma imagem opcional do formulário. Retorna a URL salva (nova imagem),
+// null (nenhum arquivo enviado) ou um erro de validação.
+async function readOptionalImage(
+  formData: FormData,
+  field: string,
+  folder: string
+): Promise<string | null | { error: string }> {
+  const file = formData.get(field);
+  if (!(file instanceof File) || file.size === 0) return null;
+  if (!allowedImageMimeTypes.includes(file.type)) {
+    return { error: "Imagem inválida. Use JPG, PNG ou WebP." };
+  }
+  if (file.size > maxImageSizeBytes) {
+    return { error: "A imagem excede o limite de 5 MB." };
+  }
+  return savePublicImage(folder, file);
+}
+
+// Representante edita o perfil público (descrição, contatos e imagens).
+export async function updateOrganizationProfileAction(
+  _prevState: OrganizationFormState,
+  formData: FormData
+): Promise<OrganizationFormState> {
+  const person = await getSessionPerson();
+  if (!person) redirect("/entrar");
+
+  const organizationId = formData.get("organizationId")?.toString() ?? "";
+  const membership = await prisma.organizationMember.findUnique({
+    where: {
+      organizationId_personId: { organizationId, personId: person.id },
+    },
+  });
+  if (!membership || membership.role !== "REPRESENTATIVE") {
+    return { error: "Você não é representante desta organização." };
+  }
+
+  const parsed = updateOrgProfileSchema.safeParse({
+    description: formData.get("description")?.toString(),
+    publicEmail: formData.get("publicEmail")?.toString(),
+    phone: formData.get("phone")?.toString(),
+    website: formData.get("website")?.toString(),
+  });
+  if (!parsed.success) {
+    return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  }
+
+  // Imagens são opcionais: ausência mantém a atual; arquivo novo substitui.
+  const logo = await readOptionalImage(formData, "logo", "org-logos");
+  if (logo && typeof logo === "object") return { error: logo.error };
+  const cover = await readOptionalImage(formData, "cover", "org-covers");
+  if (cover && typeof cover === "object") return { error: cover.error };
+
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: {
+      description: parsed.data.description || null,
+      publicEmail: parsed.data.publicEmail || null,
+      phone: parsed.data.phone || null,
+      website: parsed.data.website || null,
+      ...(typeof logo === "string" ? { logoUrl: logo } : {}),
+      ...(typeof cover === "string" ? { coverUrl: cover } : {}),
+    },
+  });
+
+  revalidatePath(`/organizacoes/${organizationId}`);
+  redirect(`/organizacoes/${organizationId}`);
 }
 
 const MAX_DOCUMENTS = 5;

@@ -6,11 +6,11 @@ Criar a **Página da Organização** visível publicamente após Validação de 
 
 ## Acceptance criteria
 
-- [ ] Organização validada tem Página pública.
-- [ ] Organização não validada não tem Página pública visível.
-- [ ] Página mostra identidade, descrição, contatos permitidos e Selo de Validação.
-- [ ] Página lista Campanhas publicadas da Organização.
-- [ ] Página não expõe documentos privados.
+- [x] Organização validada tem Página pública.
+- [x] Organização não validada não tem Página pública visível.
+- [x] Página mostra identidade, descrição, contatos permitidos e Selo de Validação.
+- [x] Página lista Campanhas publicadas da Organização.
+- [x] Página não expõe documentos privados.
 
 ## Blocked by
 

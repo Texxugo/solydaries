@@ -100,6 +100,12 @@ export default async function RootLayout({
                     Minhas campanhas
                   </Link>
                   <Link
+                    href="/meus-apoios"
+                    className="rounded-full px-4 py-2 text-stone-600 transition hover:bg-brand-50 hover:text-brand-700"
+                  >
+                    Meus apoios
+                  </Link>
+                  <Link
                     href="/organizacoes"
                     className="rounded-full px-4 py-2 text-stone-600 transition hover:bg-brand-50 hover:text-brand-700"
                   >
